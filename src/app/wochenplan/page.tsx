@@ -38,21 +38,82 @@ export default function WochenplanPageWrapper() {
   return <Suspense fallback={<div className="text-center py-8 text-primary-500">Lade...</div>}><WochenplanPage /></Suspense>;
 }
 
+interface GuestCount {
+  date: string;
+  location: string;
+  meal_type: string;
+  count: number;
+}
+
+interface DayPax {
+  cityMittag: number;
+  cityAbend: number;
+  suedMittag: number;
+  suedAbend: number;
+}
+
+// Get ISO dates (YYYY-MM-DD) for each day of a given ISO week
+function getWeekDates(year: number, week: number): Record<number, string> {
+  // ISO week: week 1 contains the first Thursday of the year
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7; // Mon=1..Sun=7
+  const monday = new Date(jan4);
+  monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
+
+  const dates: Record<number, string> = {};
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const dow = i === 6 ? 0 : i + 1; // 0=So, 1=Mo, ..., 6=Sa
+    dates[dow] = d.toISOString().split('T')[0];
+  }
+  return dates;
+}
+
 function WochenplanPage() {
   const searchParams = useSearchParams();
   const [plan, setPlan] = useState<WeekPlan | null>(null);
+  const [paxData, setPaxData] = useState<Record<number, DayPax>>({});
   const [year, setYear] = useState(parseInt(searchParams.get('year') || new Date().getFullYear().toString()));
   const [week, setWeek] = useState(parseInt(searchParams.get('week') || '1'));
   const [loading, setLoading] = useState(true);
 
+  const weekDates = getWeekDates(year, week);
+
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/plans?year=${year}&week=${week}`)
-      .then(r => r.json())
-      .then(data => {
-        setPlan(data);
-        setLoading(false);
-      });
+
+    // Fetch plan and guest counts in parallel
+    const dateValues = Object.values(weekDates).sort();
+    const from = dateValues[0];
+    const to = dateValues[dateValues.length - 1];
+
+    Promise.all([
+      fetch(`/api/plans?year=${year}&week=${week}`).then(r => r.json()),
+      fetch(`/api/ocr?from=${from}&to=${to}`).then(r => r.json()),
+    ]).then(([planData, counts]) => {
+      setPlan(planData);
+
+      // Build paxData: dayOfWeek → {cityMittag, cityAbend, suedMittag, suedAbend}
+      const pax: Record<number, DayPax> = {};
+      // Map ISO date → dayOfWeek
+      const dateToDay: Record<string, number> = {};
+      for (const [dow, date] of Object.entries(weekDates)) {
+        dateToDay[date] = parseInt(dow);
+      }
+
+      for (const c of (counts as GuestCount[])) {
+        const dow = dateToDay[c.date];
+        if (dow === undefined) continue;
+        if (!pax[dow]) pax[dow] = { cityMittag: 0, cityAbend: 0, suedMittag: 0, suedAbend: 0 };
+        if (c.location === 'city' && c.meal_type === 'mittag') pax[dow].cityMittag = c.count;
+        else if (c.location === 'city' && c.meal_type === 'abend') pax[dow].cityAbend = c.count;
+        else if (c.location === 'sued' && c.meal_type === 'mittag') pax[dow].suedMittag = c.count;
+        else if (c.location === 'sued' && c.meal_type === 'abend') pax[dow].suedAbend = c.count;
+      }
+      setPaxData(pax);
+      setLoading(false);
+    });
   }, [year, week]);
 
   const rotationWeek = ((week - 1) % 6) + 1;
@@ -153,7 +214,7 @@ function WochenplanPage() {
           <div className="text-primary-500 text-sm">Lade Wochenplan...</div>
         </div>
       ) : plan ? (
-        <WeekGrid days={plan.days} year={year} calendarWeek={week} />
+        <WeekGrid days={plan.days} paxData={paxData} year={year} calendarWeek={week} dates={weekDates} />
       ) : (
         <div className="text-center py-16 bg-white rounded-card shadow-card border border-primary-100">
           <div className="text-primary-400 text-lg mb-2">Kein Plan gefunden</div>

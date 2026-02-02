@@ -30,8 +30,13 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const date = searchParams.get('date');
 
+  const from = searchParams.get('from');
+  const to = searchParams.get('to');
+
   let counts;
-  if (date) {
+  if (from && to) {
+    counts = db.prepare('SELECT * FROM guest_counts WHERE date >= ? AND date <= ? ORDER BY date, location, meal_type').all(from, to);
+  } else if (date) {
     counts = db.prepare('SELECT * FROM guest_counts WHERE date = ? ORDER BY location, meal_type').all(date);
   } else {
     counts = db.prepare('SELECT * FROM guest_counts ORDER BY date DESC LIMIT 100').all();
