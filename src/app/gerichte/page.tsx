@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import AllergenBadge from '@/components/AllergenBadge';
+import RecipeEditor from '@/components/RecipeEditor';
 
 interface Dish {
   id: number;
@@ -27,6 +28,7 @@ export default function GerichtePage() {
   const [showForm, setShowForm] = useState(false);
   const [editDish, setEditDish] = useState<Dish | null>(null);
   const [form, setForm] = useState({ name: '', category: 'suppe', allergens: '', season: 'all' });
+  const [recipeDish, setRecipeDish] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(() => {
     loadDishes();
@@ -208,6 +210,12 @@ export default function GerichtePage() {
                 </td>
                 <td className="px-4 py-2.5 text-right">
                   <button
+                    onClick={() => setRecipeDish({ id: dish.id, name: dish.name })}
+                    className="text-xs px-3 py-1 bg-accent-50 text-accent-700 rounded-lg hover:bg-accent-100 transition-colors mr-2 font-medium"
+                  >
+                    Rezept
+                  </button>
+                  <button
                     onClick={() => startEdit(dish)}
                     className="text-xs px-3 py-1 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors mr-2 font-medium"
                   >
@@ -217,7 +225,7 @@ export default function GerichtePage() {
                     onClick={() => handleDelete(dish.id)}
                     className="text-xs px-3 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium"
                   >
-                    Löschen
+                    L&ouml;schen
                   </button>
                 </td>
               </tr>
@@ -230,6 +238,14 @@ export default function GerichtePage() {
           </div>
         )}
       </div>
+      {/* Recipe Editor Modal */}
+      {recipeDish && (
+        <RecipeEditor
+          dishId={recipeDish.id}
+          dishName={recipeDish.name}
+          onClose={() => setRecipeDish(null)}
+        />
+      )}
     </div>
   );
 }

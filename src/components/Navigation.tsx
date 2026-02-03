@@ -42,9 +42,33 @@ const NAV_ITEMS = [
     description: 'OCR-Scanner'
   },
   {
+    href: '/produktionsliste',
+    label: 'Produktion',
+    icon: '\u2699', // Gear icon
+    description: 'Produktionslisten'
+  },
+  {
+    href: '/einkaufsliste',
+    label: 'Einkauf',
+    icon: '\u2610', // Checkbox icon
+    description: 'Einkaufslisten'
+  },
+  {
+    href: '/kosten',
+    label: 'Kosten',
+    icon: '\u20AC', // Euro icon
+    description: 'Wareneinsatz'
+  },
+  {
+    href: '/zutaten',
+    label: 'Zutaten',
+    icon: '\u2295', // Plus circle icon
+    description: 'Stammdaten'
+  },
+  {
     href: '/export',
     label: 'Export',
-    icon: '⬇', // Download icon
+    icon: '\u2B07', // Download icon
     description: 'Excel & CSV'
   },
   {

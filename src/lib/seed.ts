@@ -1,5 +1,6 @@
 import { getDb } from './db';
 import { initializeDatabase } from './schema';
+import { seedIngredients } from './seed-ingredients';
 
 interface DishSeed {
   name: string;
@@ -910,6 +911,9 @@ export function seedDatabase() {
   });
 
   seedAll();
+
+  // Seed ingredients and recipes
+  seedIngredients();
 }
 
 export function reseedDatabase() {

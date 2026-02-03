@@ -41,13 +41,14 @@ interface WeekGridProps {
   calendarWeek?: number;
   dates?: Record<number, string>;
   onDishChange?: (dayOfWeek: number, meal: string, location: string, slotKey: string, dish: Dish | null) => void;
+  activeDragCategory?: string | null;
 }
 
 function paxLabel(count: number): string {
   return count > 0 ? `${count} PAX` : '-';
 }
 
-export default function WeekGrid({ days, paxData, compact, year, calendarWeek, dates, onDishChange }: WeekGridProps) {
+export default function WeekGrid({ days, paxData, compact, year, calendarWeek, dates, onDishChange, activeDragCategory }: WeekGridProps) {
   return (
     <div className="space-y-4">
       {[...days].sort((a, b) => ((a.dayOfWeek || 7) - (b.dayOfWeek || 7))).map((day) => {
@@ -87,6 +88,7 @@ export default function WeekGrid({ days, paxData, compact, year, calendarWeek, d
                 dayOfWeek={day.dayOfWeek}
                 meal="mittag"
                 location="city"
+                activeDragCategory={activeDragCategory}
                 onDishChange={onDishChange && ((slotKey, dish) => onDishChange(day.dayOfWeek, 'mittag', 'city', slotKey, dish))}
               />
               <MealCard
@@ -99,6 +101,7 @@ export default function WeekGrid({ days, paxData, compact, year, calendarWeek, d
                 dayOfWeek={day.dayOfWeek}
                 meal="abend"
                 location="city"
+                activeDragCategory={activeDragCategory}
                 onDishChange={onDishChange && ((slotKey, dish) => onDishChange(day.dayOfWeek, 'abend', 'city', slotKey, dish))}
               />
               <MealCard
@@ -111,6 +114,7 @@ export default function WeekGrid({ days, paxData, compact, year, calendarWeek, d
                 dayOfWeek={day.dayOfWeek}
                 meal="mittag"
                 location="sued"
+                activeDragCategory={activeDragCategory}
                 onDishChange={onDishChange && ((slotKey, dish) => onDishChange(day.dayOfWeek, 'mittag', 'sued', slotKey, dish))}
               />
               <MealCard
@@ -123,6 +127,7 @@ export default function WeekGrid({ days, paxData, compact, year, calendarWeek, d
                 dayOfWeek={day.dayOfWeek}
                 meal="abend"
                 location="sued"
+                activeDragCategory={activeDragCategory}
                 onDishChange={onDishChange && ((slotKey, dish) => onDishChange(day.dayOfWeek, 'abend', 'sued', slotKey, dish))}
               />
             </div>

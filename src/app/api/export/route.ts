@@ -3,10 +3,44 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { seedDatabase } from '@/lib/seed';
 import { getWeeklyPlan, generateWeekFromRotation, DAY_NAMES_SHORT, type MealSlot } from '@/lib/rotation';
+import { getDb } from '@/lib/db';
 import ExcelJS from 'exceljs';
 
 function ensureDb() {
   seedDatabase();
+}
+
+// Temperature lookup: returns map of "dayOfWeek-meal-location-slot" → { core, serving }
+type TempMap = Record<string, { core: string; serving: string }>;
+
+function getTemperaturesForWeek(year: number, week: number): TempMap {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT wp.day_of_week, wp.meal, wp.location, tl.dish_slot, tl.temp_core, tl.temp_serving
+    FROM temperature_logs tl
+    JOIN weekly_plans wp ON tl.plan_id = wp.id
+    WHERE wp.year = ? AND wp.calendar_week = ?
+  `).all(year, week) as Array<{
+    day_of_week: number; meal: string; location: string;
+    dish_slot: string; temp_core: string; temp_serving: string;
+  }>;
+
+  const map: TempMap = {};
+  for (const r of rows) {
+    const key = `${r.day_of_week}-${r.meal}-${r.location}-${r.dish_slot}`;
+    map[key] = { core: r.temp_core || '', serving: r.temp_serving || '' };
+  }
+  return map;
+}
+
+function formatTemp(tempMap: TempMap, dayOfWeek: number, meal: string, location: string, slotIdx: number): string {
+  const slotFields = ['soup', 'main1', 'side1a', 'side1b', 'main2', 'side2a', 'side2b', 'dessert'];
+  const key = `${dayOfWeek}-${meal}-${location}-${slotFields[slotIdx]}`;
+  const t = tempMap[key];
+  if (t && (t.core || t.serving)) {
+    return `${t.core || '__'}/${t.serving || '__'}`;
+  }
+  return '__/__';
 }
 
 // Slot labels for each row
@@ -41,14 +75,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Kein Plan gefunden' }, { status: 404 });
   }
 
+  const tempMap = getTemperaturesForWeek(year, week);
+
   if (format === 'csv') {
-    return generateCSV(plan, week);
+    return generateCSV(plan, week, tempMap);
   }
 
-  return generateXLSX(plan, year, week, paxCity, paxSued);
+  return generateXLSX(plan, year, week, paxCity, paxSued, tempMap);
 }
 
-function generateCSV(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, week: number): NextResponse {
+function generateCSV(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, week: number, tempMap: TempMap): NextResponse {
   const rows: string[][] = [];
 
   // Header
@@ -64,7 +100,7 @@ function generateCSV(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, week: 
       else row.push('');
       row.push(SLOT_LABELS[i]);
       const cm = getDishForSlot(day.mittag.city, i);
-      row.push(cm.name, cm.allergens, '__/__');
+      row.push(cm.name, cm.allergens, formatTemp(tempMap, day.dayOfWeek, 'mittag', 'city', i));
       row.push(''); // spacer
 
       // City Abend block
@@ -72,7 +108,7 @@ function generateCSV(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, week: 
       else row.push('');
       row.push(SLOT_LABELS[i]);
       const ca = getDishForSlot(day.abend.city, i);
-      row.push(ca.name, ca.allergens, '__/__');
+      row.push(ca.name, ca.allergens, formatTemp(tempMap, day.dayOfWeek, 'abend', 'city', i));
       row.push(''); // spacer
 
       // SÜD Mittag block
@@ -80,7 +116,7 @@ function generateCSV(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, week: 
       else row.push('');
       row.push(SLOT_LABELS[i]);
       const sm = getDishForSlot(day.mittag.sued, i);
-      row.push(sm.name, sm.allergens, '__/__');
+      row.push(sm.name, sm.allergens, formatTemp(tempMap, day.dayOfWeek, 'mittag', 'sued', i));
       row.push(''); // spacer
 
       // SÜD Abend block
@@ -88,7 +124,7 @@ function generateCSV(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, week: 
       else row.push('');
       row.push(SLOT_LABELS[i]);
       const sa = getDishForSlot(day.abend.sued, i);
-      row.push(sa.name, sa.allergens, '__/__');
+      row.push(sa.name, sa.allergens, formatTemp(tempMap, day.dayOfWeek, 'abend', 'sued', i));
 
       rows.push(row);
     }
@@ -103,7 +139,7 @@ function generateCSV(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, week: 
   });
 }
 
-async function generateXLSX(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, year: number, week: number, paxCity: string, paxSued: string): Promise<NextResponse> {
+async function generateXLSX(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>, year: number, week: number, paxCity: string, paxSued: string, tempMap: TempMap): Promise<NextResponse> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(`KW ${week}`, {
     pageSetup: {
@@ -223,7 +259,7 @@ async function generateXLSX(plan: NonNullable<ReturnType<typeof getWeeklyPlan>>,
 
         // Temperature field for every row
         const tempCell = sheet.getCell(currentRow, c + 4);
-        tempCell.value = '__/__';
+        tempCell.value = formatTemp(tempMap, day.dayOfWeek, block.mealKey, block.locKey, slotIdx);
         tempCell.font = normalFont;
         tempCell.alignment = { horizontal: 'center' };
         tempCell.border = thinBorder;

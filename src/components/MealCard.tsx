@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import AllergenBadge from './AllergenBadge';
 
 interface Dish {
@@ -37,6 +38,124 @@ interface MealCardProps {
   temperatures?: TempData;
   onTempChange?: (slot: string, core: string, serving: string) => void;
   onDishChange?: (slotKey: string, dish: Dish | null) => void;
+  activeDragCategory?: string | null;
+}
+
+function getSlotCategory(slotKey: string): string {
+  if (slotKey === 'soup') return 'soup';
+  if (slotKey === 'main1' || slotKey === 'main2') return 'main';
+  if (slotKey.startsWith('side')) return 'side';
+  if (slotKey === 'dessert') return 'dessert';
+  return slotKey;
+}
+
+function DishRow({ rowKey, label, isMain, dish, temp, dayOfWeek, meal, location, activeDragCategory, editingSlot, setEditingSlot, onDishChange, onTempChange, rowIndex }: {
+  rowKey: keyof MealSlot;
+  label: string;
+  isMain: boolean;
+  dish: Dish | null;
+  temp: { core: string; serving: string };
+  dayOfWeek?: number;
+  meal?: string;
+  location?: string;
+  activeDragCategory?: string | null;
+  editingSlot: string | null;
+  setEditingSlot: (s: string | null) => void;
+  onDishChange?: (slotKey: string, dish: Dish | null) => void;
+  onTempChange: (slotKey: string, field: 'core' | 'serving', value: string) => void;
+  rowIndex: number;
+}) {
+  const dragId = dayOfWeek !== undefined && meal && location
+    ? `${dayOfWeek}-${meal}-${location}-${rowKey}`
+    : `noid-${rowKey}`;
+
+  const dragData = {
+    dayOfWeek, meal, location, slotKey: rowKey, dish,
+  };
+
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: dragId,
+    data: dragData,
+    disabled: !onDishChange,
+  });
+
+  const category = getSlotCategory(rowKey);
+  const isValidTarget = activeDragCategory === category;
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: dragId,
+    data: dragData,
+    disabled: !onDishChange || !isValidTarget,
+  });
+
+  const setRef = (el: HTMLTableRowElement | null) => {
+    setDragRef(el);
+    setDropRef(el);
+  };
+
+  return (
+    <tr
+      ref={setRef}
+      className={`border-b border-primary-50 transition-colors ${
+        isDragging ? 'opacity-50' : ''
+      } ${
+        isOver && isValidTarget ? 'ring-2 ring-inset ring-amber-400 bg-amber-50/50' : ''
+      } ${
+        isMain
+          ? 'bg-accent-50/40 hover:bg-accent-50'
+          : rowIndex % 2 === 0
+          ? 'bg-white hover:bg-primary-50/50'
+          : 'bg-primary-50/30 hover:bg-primary-50'
+      }`}
+      {...attributes}
+      {...listeners}
+    >
+      <td className={`px-1.5 py-0.5 font-semibold ${isMain ? 'text-accent-700' : 'text-primary-500'}`}>
+        {label}
+      </td>
+      <td className={`px-1.5 py-0.5 relative ${isMain ? 'font-medium text-primary-900' : 'text-primary-700'}`}>
+        {onDishChange ? (
+          <span
+            className="cursor-pointer hover:text-accent-600 hover:underline decoration-accent-300 underline-offset-2 transition-colors"
+            onClick={() => setEditingSlot(editingSlot === rowKey ? null : rowKey)}
+          >
+            {dish?.name || <span className="text-primary-300 italic">— leer —</span>}
+          </span>
+        ) : (
+          dish?.name || <span className="text-primary-300">-</span>
+        )}
+        {editingSlot === rowKey && onDishChange && (
+          <DishDropdown
+            slotKey={rowKey}
+            currentDish={dish}
+            onSelect={(d) => {
+              onDishChange(rowKey, d);
+              setEditingSlot(null);
+            }}
+            onClose={() => setEditingSlot(null)}
+          />
+        )}
+      </td>
+      <td className="px-1 py-0.5 text-center">
+        {dish?.allergens && <AllergenBadge codes={dish.allergens} />}
+      </td>
+      <td className="px-1 py-0.5 text-center">
+        <div className="flex items-center justify-center gap-0.5">
+          <InlineTempInput
+            value={temp.core}
+            onChange={(v) => onTempChange(rowKey, 'core', v)}
+            placeholder="__"
+          />
+          <span className="text-primary-300">/</span>
+          <InlineTempInput
+            value={temp.serving}
+            onChange={(v) => onTempChange(rowKey, 'serving', v)}
+            placeholder="__"
+          />
+        </div>
+      </td>
+    </tr>
+  );
 }
 
 // Map slot keys to dish categories for filtering
@@ -170,7 +289,7 @@ function InlineTempInput({ value, onChange, placeholder }: { value: string; onCh
   );
 }
 
-export default function MealCard({ slot, title, pax, compact, year, calendarWeek, dayOfWeek, meal, location, temperatures = {}, onTempChange, onDishChange }: MealCardProps) {
+export default function MealCard({ slot, title, pax, compact, year, calendarWeek, dayOfWeek, meal, location, temperatures = {}, onTempChange, onDishChange, activeDragCategory }: MealCardProps) {
   const [temps, setTemps] = useState<TempData>(temperatures);
   const [saveTimer, setSaveTimer] = useState<Record<string, NodeJS.Timeout>>({});
   const [editingSlot, setEditingSlot] = useState<string | null>(null);
@@ -236,69 +355,25 @@ export default function MealCard({ slot, title, pax, compact, year, calendarWeek
           </tr>
         </thead>
         <tbody>
-          {ROWS.map((row, i) => {
-            const dish = slot[row.key];
-            const temp = temps[row.key] || { core: '', serving: '' };
-            const isMainRow = row.isMain;
-
-            return (
-              <tr
-                key={i}
-                className={`border-b border-primary-50 transition-colors ${
-                  isMainRow
-                    ? 'bg-accent-50/40 hover:bg-accent-50'
-                    : i % 2 === 0
-                    ? 'bg-white hover:bg-primary-50/50'
-                    : 'bg-primary-50/30 hover:bg-primary-50'
-                }`}
-              >
-                <td className={`px-1.5 py-0.5 font-semibold ${isMainRow ? 'text-accent-700' : 'text-primary-500'}`}>
-                  {row.label}
-                </td>
-                <td className={`px-1.5 py-0.5 relative ${isMainRow ? 'font-medium text-primary-900' : 'text-primary-700'}`}>
-                  {onDishChange ? (
-                    <span
-                      className="cursor-pointer hover:text-accent-600 hover:underline decoration-accent-300 underline-offset-2 transition-colors"
-                      onClick={() => setEditingSlot(editingSlot === row.key ? null : row.key)}
-                    >
-                      {dish?.name || <span className="text-primary-300 italic">— leer —</span>}
-                    </span>
-                  ) : (
-                    dish?.name || <span className="text-primary-300">-</span>
-                  )}
-                  {editingSlot === row.key && onDishChange && (
-                    <DishDropdown
-                      slotKey={row.key}
-                      currentDish={dish}
-                      onSelect={(d) => {
-                        onDishChange(row.key, d);
-                        setEditingSlot(null);
-                      }}
-                      onClose={() => setEditingSlot(null)}
-                    />
-                  )}
-                </td>
-                <td className="px-1 py-0.5 text-center">
-                  {dish?.allergens && <AllergenBadge codes={dish.allergens} />}
-                </td>
-                <td className="px-1 py-0.5 text-center">
-                  <div className="flex items-center justify-center gap-0.5">
-                    <InlineTempInput
-                      value={temp.core}
-                      onChange={(v) => handleTempChange(row.key, 'core', v)}
-                      placeholder="__"
-                    />
-                    <span className="text-primary-300">/</span>
-                    <InlineTempInput
-                      value={temp.serving}
-                      onChange={(v) => handleTempChange(row.key, 'serving', v)}
-                      placeholder="__"
-                    />
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+          {ROWS.map((row, i) => (
+            <DishRow
+              key={row.key}
+              rowKey={row.key}
+              label={row.label}
+              isMain={row.isMain}
+              dish={slot[row.key]}
+              temp={temps[row.key] || { core: '', serving: '' }}
+              dayOfWeek={dayOfWeek}
+              meal={meal}
+              location={location}
+              activeDragCategory={activeDragCategory}
+              editingSlot={editingSlot}
+              setEditingSlot={setEditingSlot}
+              onDishChange={onDishChange}
+              onTempChange={handleTempChange}
+              rowIndex={i}
+            />
+          ))}
         </tbody>
       </table>
     </div>

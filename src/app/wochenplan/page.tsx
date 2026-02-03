@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent } from '@dnd-kit/core';
 import WeekGrid from '@/components/WeekGrid';
 
 interface WeekPlan {
@@ -70,6 +71,23 @@ function getWeekDates(year: number, week: number): Record<number, string> {
   return dates;
 }
 
+// Which category group a slot belongs to, for swap compatibility
+function getSlotCategory(slotKey: string): string {
+  if (slotKey === 'soup') return 'soup';
+  if (slotKey === 'main1' || slotKey === 'main2') return 'main';
+  if (slotKey.startsWith('side')) return 'side';
+  if (slotKey === 'dessert') return 'dessert';
+  return slotKey;
+}
+
+interface DragData {
+  dayOfWeek: number;
+  meal: string;
+  location: string;
+  slotKey: string;
+  dish: Dish | null;
+}
+
 function WochenplanPage() {
   const searchParams = useSearchParams();
   const [plan, setPlan] = useState<WeekPlan | null>(null);
@@ -77,6 +95,12 @@ function WochenplanPage() {
   const [year, setYear] = useState(parseInt(searchParams.get('year') || new Date().getFullYear().toString()));
   const [week, setWeek] = useState(parseInt(searchParams.get('week') || '1'));
   const [loading, setLoading] = useState(true);
+  const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 5 } }),
+  );
 
   const weekDates = getWeekDates(year, week);
 
@@ -162,6 +186,78 @@ function WochenplanPage() {
         location,
         slot: slotKey,
         dishId: dish?.id || null,
+      }),
+    });
+  }, [year, week]);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const data = event.active.data.current as DragData | undefined;
+    if (data) setActiveDrag(data);
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveDrag(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const src = active.data.current as DragData | undefined;
+    const dst = over.data.current as DragData | undefined;
+    if (!src || !dst) return;
+
+    // Only allow swapping same category
+    if (getSlotCategory(src.slotKey) !== getSlotCategory(dst.slotKey)) return;
+
+    // Optimistic UI: swap both dishes
+    setPlan(prev => {
+      if (!prev) return prev;
+      const days = prev.days.map(day => {
+        let d = day;
+        // Apply src dish → dst position
+        if (day.dayOfWeek === dst.dayOfWeek) {
+          const mealKey = dst.meal as 'mittag' | 'abend';
+          const locKey = dst.location as 'city' | 'sued';
+          d = {
+            ...d,
+            [mealKey]: {
+              ...d[mealKey],
+              [locKey]: { ...d[mealKey][locKey], [dst.slotKey]: src.dish },
+            },
+          };
+        }
+        // Apply dst dish → src position
+        if (d.dayOfWeek === src.dayOfWeek) {
+          const mealKey = src.meal as 'mittag' | 'abend';
+          const locKey = src.location as 'city' | 'sued';
+          d = {
+            ...d,
+            [mealKey]: {
+              ...d[mealKey],
+              [locKey]: { ...d[mealKey][locKey], [src.slotKey]: dst.dish },
+            },
+          };
+        }
+        return d;
+      });
+      return { ...prev, days };
+    });
+
+    // Persist both changes to API
+    fetch('/api/plans', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        year, calendarWeek: week,
+        dayOfWeek: dst.dayOfWeek, meal: dst.meal, location: dst.location,
+        slot: dst.slotKey, dishId: src.dish?.id || null,
+      }),
+    });
+    fetch('/api/plans', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        year, calendarWeek: week,
+        dayOfWeek: src.dayOfWeek, meal: src.meal, location: src.location,
+        slot: src.slotKey, dishId: dst.dish?.id || null,
       }),
     });
   }, [year, week]);
@@ -252,7 +348,16 @@ function WochenplanPage() {
           <div className="text-primary-500 text-sm">Lade Wochenplan...</div>
         </div>
       ) : plan ? (
-        <WeekGrid days={plan.days} paxData={paxData} year={year} calendarWeek={week} dates={weekDates} onDishChange={handleDishChange} />
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <WeekGrid days={plan.days} paxData={paxData} year={year} calendarWeek={week} dates={weekDates} onDishChange={handleDishChange} activeDragCategory={activeDrag ? getSlotCategory(activeDrag.slotKey) : null} />
+          <DragOverlay dropAnimation={null}>
+            {activeDrag?.dish ? (
+              <div className="bg-white border border-accent-400 rounded px-2 py-1 text-xs shadow-lg font-medium text-primary-900 max-w-48 truncate">
+                {activeDrag.dish.name}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       ) : (
         <div className="text-center py-16 bg-white rounded-card shadow-card border border-primary-100">
           <div className="text-primary-400 text-lg mb-2">Kein Plan gefunden</div>

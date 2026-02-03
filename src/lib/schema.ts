@@ -93,6 +93,31 @@ export function initializeDatabase() {
       sort_order INTEGER DEFAULT 0,
       notes TEXT DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS ingredients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      category TEXT NOT NULL CHECK(category IN (
+        'fleisch','fisch','gemuese','milchprodukte','trockenwaren',
+        'gewuerze','eier_fette','obst','tiefkuehl','sonstiges'
+      )),
+      unit TEXT NOT NULL CHECK(unit IN ('g','kg','ml','l','stueck')),
+      price_per_unit REAL DEFAULT 0,
+      price_unit TEXT NOT NULL DEFAULT 'kg' CHECK(price_unit IN ('g','kg','ml','l','stueck')),
+      supplier TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS recipe_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dish_id INTEGER NOT NULL REFERENCES dishes(id) ON DELETE CASCADE,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+      quantity REAL NOT NULL,
+      unit TEXT NOT NULL CHECK(unit IN ('g','kg','ml','l','stueck')),
+      preparation_note TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0,
+      UNIQUE(dish_id, ingredient_id)
+    );
   `);
 
   // Migration: add new columns to ak_events if they don't exist
@@ -108,8 +133,23 @@ export function initializeDatabase() {
     ['airtable_id', "ALTER TABLE ak_events ADD COLUMN airtable_id TEXT DEFAULT ''"],
   ];
 
+  // Migration: add new columns to dishes
+  const dishColumns = db.prepare("PRAGMA table_info(dishes)").all() as { name: string }[];
+  const dishColNames = dishColumns.map(c => c.name);
+
+  const dishMigrations: [string, string][] = [
+    ['prep_instructions', "ALTER TABLE dishes ADD COLUMN prep_instructions TEXT DEFAULT ''"],
+    ['prep_time_minutes', "ALTER TABLE dishes ADD COLUMN prep_time_minutes INTEGER DEFAULT 0"],
+  ];
+
   for (const [col, sql] of migrations) {
     if (!colNames.includes(col)) {
+      try { db.exec(sql); } catch (e: unknown) { void e; /* column might already exist */ }
+    }
+  }
+
+  for (const [col, sql] of dishMigrations) {
+    if (!dishColNames.includes(col)) {
       try { db.exec(sql); } catch (e: unknown) { void e; /* column might already exist */ }
     }
   }
