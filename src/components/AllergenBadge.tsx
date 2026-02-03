@@ -8,7 +8,7 @@ export default function AllergenBadge({ codes }: { codes: string }) {
   if (letters.length === 0) return null;
 
   return (
-    <span className="text-red-600 font-semibold text-xs" title={letters.map((c) => `${c}=${ALLERGENS[c].nameDE}`).join(', ')}>
+    <span className="text-primary-500 font-medium text-[10px] tracking-tight" title={letters.map((c) => `${c}=${ALLERGENS[c].nameDE}`).join(', ')}>
       {letters.join(',')}
     </span>
   );

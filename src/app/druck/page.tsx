@@ -158,7 +158,7 @@ function DruckPage() {
                   <th key={`h2_${blockIdx}`} className="px-1 py-0 border text-left"></th>
                   <th key={`h3_${blockIdx}`} className="px-1 py-0 border text-left"></th>
                   <th key={`h4_${blockIdx}`} className="px-1 py-0 border text-center">Allerg.</th>
-                  <th key={`h5_${blockIdx}`} className="px-1 py-0 border text-center">Temp.</th>
+                  <th key={`h5_${blockIdx}`} className="px-1 py-0 border text-center">°C</th>
                 </>
               ))}
             </tr>
@@ -166,11 +166,11 @@ function DruckPage() {
 
           <tbody>
             {[...plan.days].sort((a, b) => ((a.dayOfWeek || 7) - (b.dayOfWeek || 7))).map((day) => {
-              const blocks: { meal: 'mittag' | 'abend'; loc: 'city' | 'sued'; pax: string; mealLabel: string }[] = [
-                { meal: 'mittag', loc: 'city', pax: '60 PAX', mealLabel: 'Mittag' },
-                { meal: 'abend', loc: 'city', pax: '60 PAX', mealLabel: 'Abend' },
-                { meal: 'mittag', loc: 'sued', pax: '45 PAX', mealLabel: 'Mittag' },
-                { meal: 'abend', loc: 'sued', pax: '45 PAX', mealLabel: 'Abend' },
+              const blocks: { meal: 'mittag' | 'abend'; loc: 'city' | 'sued'; mealLabel: string }[] = [
+                { meal: 'mittag', loc: 'city', mealLabel: 'Mittag' },
+                { meal: 'abend', loc: 'city', mealLabel: 'Abend' },
+                { meal: 'mittag', loc: 'sued', mealLabel: 'Mittag' },
+                { meal: 'abend', loc: 'sued', mealLabel: 'Abend' },
               ];
 
               return Array.from({ length: 8 }, (_, slotIdx) => (
@@ -184,7 +184,6 @@ function DruckPage() {
                         <td key={`d_${blockIdx}_${slotIdx}`} className="px-0.5 py-0 border" style={{ lineHeight: '1.1' }}>
                           {slotIdx === 0 && <span className="font-bold">{DAY_NAMES_SHORT[day.dayOfWeek]}</span>}
                           {slotIdx === 1 && <span className="text-gray-600">{block.mealLabel}</span>}
-                          {slotIdx === 2 && <span className="text-gray-400 italic">{block.pax}</span>}
                         </td>
                         <td key={`l_${blockIdx}_${slotIdx}`} className="px-0.5 py-0 border font-semibold text-gray-600" style={{ lineHeight: '1.1' }}>
                           {SLOT_LABELS[slotIdx]}
@@ -192,11 +191,11 @@ function DruckPage() {
                         <td key={`n_${blockIdx}_${slotIdx}`} className="px-0.5 py-0 border" style={{ lineHeight: '1.1' }}>
                           {dish?.name || ''}
                         </td>
-                        <td key={`a_${blockIdx}_${slotIdx}`} className="px-0.5 py-0 border text-center text-red-600" style={{ lineHeight: '1.1' }}>
+                        <td key={`a_${blockIdx}_${slotIdx}`} className="px-0.5 py-0 border text-center text-gray-500" style={{ lineHeight: '1.1' }}>
                           {dish?.allergens || ''}
                         </td>
                         <td key={`t_${blockIdx}_${slotIdx}`} className="px-0.5 py-0 border text-center" style={{ lineHeight: '1.1' }}>
-                          {'__/__'}
+                          {'__'}
                         </td>
                       </>
                     );

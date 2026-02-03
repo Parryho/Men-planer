@@ -39,18 +39,11 @@ export default function WochenplanPageWrapper() {
   return <Suspense fallback={<div className="text-center py-8 text-primary-500">Lade...</div>}><WochenplanPage /></Suspense>;
 }
 
-interface GuestCount {
-  date: string;
-  location: string;
-  meal_type: string;
-  count: number;
-}
-
-interface DayPax {
-  cityMittag: number;
-  cityAbend: number;
-  suedMittag: number;
-  suedAbend: number;
+function getISOWeek(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
 // Get ISO dates (YYYY-MM-DD) for each day of a given ISO week
@@ -91,9 +84,9 @@ interface DragData {
 function WochenplanPage() {
   const searchParams = useSearchParams();
   const [plan, setPlan] = useState<WeekPlan | null>(null);
-  const [paxData, setPaxData] = useState<Record<number, DayPax>>({});
-  const [year, setYear] = useState(parseInt(searchParams.get('year') || new Date().getFullYear().toString()));
-  const [week, setWeek] = useState(parseInt(searchParams.get('week') || '1'));
+  const now = new Date();
+  const [year, setYear] = useState(parseInt(searchParams.get('year') || now.getFullYear().toString()));
+  const [week, setWeek] = useState(parseInt(searchParams.get('week') || String(getISOWeek(now))));
   const [loading, setLoading] = useState(true);
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
 
@@ -106,38 +99,12 @@ function WochenplanPage() {
 
   useEffect(() => {
     setLoading(true);
-
-    // Fetch plan and guest counts in parallel
-    const dateValues = Object.values(weekDates).sort();
-    const from = dateValues[0];
-    const to = dateValues[dateValues.length - 1];
-
-    Promise.all([
-      fetch(`/api/plans?year=${year}&week=${week}`).then(r => r.json()),
-      fetch(`/api/ocr?from=${from}&to=${to}`).then(r => r.json()),
-    ]).then(([planData, counts]) => {
-      setPlan(planData);
-
-      // Build paxData: dayOfWeek → {cityMittag, cityAbend, suedMittag, suedAbend}
-      const pax: Record<number, DayPax> = {};
-      // Map ISO date → dayOfWeek
-      const dateToDay: Record<string, number> = {};
-      for (const [dow, date] of Object.entries(weekDates)) {
-        dateToDay[date] = parseInt(dow);
-      }
-
-      for (const c of (counts as GuestCount[])) {
-        const dow = dateToDay[c.date];
-        if (dow === undefined) continue;
-        if (!pax[dow]) pax[dow] = { cityMittag: 0, cityAbend: 0, suedMittag: 0, suedAbend: 0 };
-        if (c.location === 'city' && c.meal_type === 'mittag') pax[dow].cityMittag = c.count;
-        else if (c.location === 'city' && c.meal_type === 'abend') pax[dow].cityAbend = c.count;
-        else if (c.location === 'sued' && c.meal_type === 'mittag') pax[dow].suedMittag = c.count;
-        else if (c.location === 'sued' && c.meal_type === 'abend') pax[dow].suedAbend = c.count;
-      }
-      setPaxData(pax);
-      setLoading(false);
-    });
+    fetch(`/api/plans?year=${year}&week=${week}`)
+      .then(r => r.json())
+      .then(planData => {
+        setPlan(planData);
+        setLoading(false);
+      });
   }, [year, week]);
 
   const rotationWeek = ((week - 1) % 6) + 1;
@@ -349,7 +316,7 @@ function WochenplanPage() {
         </div>
       ) : plan ? (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <WeekGrid days={plan.days} paxData={paxData} year={year} calendarWeek={week} dates={weekDates} onDishChange={handleDishChange} activeDragCategory={activeDrag ? getSlotCategory(activeDrag.slotKey) : null} />
+          <WeekGrid days={plan.days} year={year} calendarWeek={week} dates={weekDates} onDishChange={handleDishChange} activeDragCategory={activeDrag ? getSlotCategory(activeDrag.slotKey) : null} />
           <DragOverlay dropAnimation={null}>
             {activeDrag?.dish ? (
               <div className="bg-white border border-accent-400 rounded px-2 py-1 text-xs shadow-lg font-medium text-primary-900 max-w-48 truncate">

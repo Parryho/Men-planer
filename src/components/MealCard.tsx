@@ -22,7 +22,7 @@ interface MealSlot {
 }
 
 interface TempData {
-  [slot: string]: { core: string; serving: string };
+  [slot: string]: { core: string; serving?: string };
 }
 
 interface MealCardProps {
@@ -36,7 +36,7 @@ interface MealCardProps {
   meal?: string;
   location?: string;
   temperatures?: TempData;
-  onTempChange?: (slot: string, core: string, serving: string) => void;
+  onTempChange?: (slot: string, core: string, serving?: string) => void;
   onDishChange?: (slotKey: string, dish: Dish | null) => void;
   activeDragCategory?: string | null;
 }
@@ -54,7 +54,7 @@ function DishRow({ rowKey, label, isMain, dish, temp, dayOfWeek, meal, location,
   label: string;
   isMain: boolean;
   dish: Dish | null;
-  temp: { core: string; serving: string };
+  temp: { core: string; serving?: string };
   dayOfWeek?: number;
   meal?: string;
   location?: string;
@@ -62,7 +62,7 @@ function DishRow({ rowKey, label, isMain, dish, temp, dayOfWeek, meal, location,
   editingSlot: string | null;
   setEditingSlot: (s: string | null) => void;
   onDishChange?: (slotKey: string, dish: Dish | null) => void;
-  onTempChange: (slotKey: string, field: 'core' | 'serving', value: string) => void;
+  onTempChange: (slotKey: string, field: 'core', value: string) => void;
   rowIndex: number;
 }) {
   const dragId = dayOfWeek !== undefined && meal && location
@@ -140,19 +140,11 @@ function DishRow({ rowKey, label, isMain, dish, temp, dayOfWeek, meal, location,
         {dish?.allergens && <AllergenBadge codes={dish.allergens} />}
       </td>
       <td className="px-1 py-0.5 text-center">
-        <div className="flex items-center justify-center gap-0.5">
-          <InlineTempInput
-            value={temp.core}
-            onChange={(v) => onTempChange(rowKey, 'core', v)}
-            placeholder="__"
-          />
-          <span className="text-primary-300">/</span>
-          <InlineTempInput
-            value={temp.serving}
-            onChange={(v) => onTempChange(rowKey, 'serving', v)}
-            placeholder="__"
-          />
-        </div>
+        <InlineTempInput
+          value={temp.core}
+          onChange={(v) => onTempChange(rowKey, 'core', v)}
+          placeholder="__"
+        />
       </td>
     </tr>
   );
@@ -289,12 +281,12 @@ function InlineTempInput({ value, onChange, placeholder }: { value: string; onCh
   );
 }
 
-export default function MealCard({ slot, title, pax, compact, year, calendarWeek, dayOfWeek, meal, location, temperatures = {}, onTempChange, onDishChange, activeDragCategory }: MealCardProps) {
+export default function MealCard({ slot, title, compact, year, calendarWeek, dayOfWeek, meal, location, temperatures = {}, onTempChange, onDishChange, activeDragCategory }: MealCardProps) {
   const [temps, setTemps] = useState<TempData>(temperatures);
   const [saveTimer, setSaveTimer] = useState<Record<string, NodeJS.Timeout>>({});
   const [editingSlot, setEditingSlot] = useState<string | null>(null);
 
-  const handleTempChange = useCallback((slotKey: string, field: 'core' | 'serving', value: string) => {
+  const handleTempChange = useCallback((slotKey: string, field: 'core', value: string) => {
     setTemps(prev => {
       const current = prev[slotKey] || { core: '', serving: '' };
       const updated = { ...current, [field]: value };
@@ -341,7 +333,7 @@ export default function MealCard({ slot, title, pax, compact, year, calendarWeek
       }`}>
         <span className={`w-2 h-2 rounded-full ${isMittag ? 'bg-accent-400' : 'bg-primary-300'}`} />
         <span>{title}</span>
-        {pax && <span className="font-normal text-primary-300 text-[10px]">{pax}</span>}
+        <span className="w-2" />
       </div>
 
       {/* Table */}
@@ -351,7 +343,7 @@ export default function MealCard({ slot, title, pax, compact, year, calendarWeek
             <th className="px-1.5 py-1 text-left font-semibold w-14 text-primary-600">Typ</th>
             <th className="px-1.5 py-1 text-left font-semibold text-primary-600">Gericht</th>
             <th className="px-1 py-1 text-center font-semibold w-10 text-primary-600">All.</th>
-            <th className="px-1 py-1 text-center font-semibold w-[88px] text-primary-600">Temp.</th>
+            <th className="px-1 py-1 text-center font-semibold w-12 text-primary-600">°C</th>
           </tr>
         </thead>
         <tbody>
