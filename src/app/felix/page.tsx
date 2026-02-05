@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import Link from 'next/link';
 import Tesseract from 'tesseract.js';
 import { preprocessImage } from '@/lib/image-preprocess';
 import { api } from '@/lib/api-client';
+import { getISOWeek } from '@/lib/constants';
 import {
   parseFelixText,
   confidenceLevel,
@@ -11,6 +13,17 @@ import {
   type DayCount,
   type FelixResult,
 } from '@/lib/felix-parser';
+
+// Parse DD.MM.YY date string to Date object
+function parseGermanDate(dateStr: string): Date | null {
+  const parts = dateStr.split('.');
+  if (parts.length !== 3) return null;
+  const day = parseInt(parts[0]);
+  const month = parseInt(parts[1]) - 1;
+  let year = parseInt(parts[2]);
+  if (year < 100) year += 2000;
+  return new Date(year, month, day);
+}
 
 type ProcessingStep = 'idle' | 'optimizing' | 'ocr' | 'ocr-retry' | 'parsing' | 'pdf' | 'done';
 
@@ -34,7 +47,16 @@ export default function FelixPage() {
   const [savedRows, setSavedRows] = useState<Set<string>>(new Set());
   const [location, setLocation] = useState('city');
   const [isPdf, setIsPdf] = useState(false);
+  const [savedWeek, setSavedWeek] = useState<{ year: number; week: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Calculate week info from first recognized date
+  function getWeekFromResult(): { year: number; week: number } | null {
+    if (!result?.days?.length) return null;
+    const firstDate = parseGermanDate(result.days[0].date);
+    if (!firstDate) return null;
+    return { year: firstDate.getFullYear(), week: getISOWeek(firstDate) };
+  }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -164,6 +186,9 @@ export default function FelixPage() {
       if (day.mittag > 0) await saveDay(day, 'mittag', day.mittag);
       if (day.abendGesamt > 0) await saveDay(day, 'abend', day.abendGesamt);
     }
+    // Set saved week for navigation link
+    const weekInfo = getWeekFromResult();
+    if (weekInfo) setSavedWeek(weekInfo);
   }
 
   function updateDay(idx: number, field: keyof DayCount, value: number) {
@@ -262,10 +287,20 @@ export default function FelixPage() {
                     Erkannte Gästezahlen ({location === 'city' ? 'City' : 'SÜD'})
                     {isPdf && <span className="ml-2 text-xs font-normal text-primary-400">(aus PDF extrahiert)</span>}
                   </h3>
-                  <button onClick={saveAll}
-                    className="bg-accent-500 text-primary-900 px-4 py-1.5 rounded-lg text-sm hover:bg-accent-400 font-semibold transition-colors">
-                    Alle speichern
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={saveAll}
+                      className="bg-accent-500 text-primary-900 px-4 py-1.5 rounded-lg text-sm hover:bg-accent-400 font-semibold transition-colors">
+                      Alle speichern
+                    </button>
+                    {savedWeek && (
+                      <Link
+                        href={`/wochenplan?year=${savedWeek.year}&week=${savedWeek.week}`}
+                        className="bg-primary-800 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-primary-700 font-semibold transition-colors flex items-center gap-1"
+                      >
+                        Wochenplan KW {savedWeek.week} →
+                      </Link>
+                    )}
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm border-collapse">
@@ -371,13 +406,13 @@ function ManualGuestCount() {
   const [saved, setSaved] = useState(false);
 
   async function save() {
-    await fetch('/api/ocr', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, location, meal_type: meal, count }),
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      await api.post('/api/ocr', { date, location, meal_type: meal, count });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error('Error saving manual count:', err);
+    }
   }
 
   return (

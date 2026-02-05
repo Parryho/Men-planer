@@ -8,6 +8,24 @@ import { getISOWeek, getSlotCategory } from '@/lib/constants';
 import { api } from '@/lib/api-client';
 import type { Dish, WeekPlan, DragData } from '@/lib/types';
 
+interface GuestCount {
+  id: number;
+  date: string;
+  location: string;
+  meal_type: string;
+  count: number;
+}
+
+// Transform guest counts into a lookup map
+function buildPaxMap(counts: GuestCount[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const c of counts) {
+    // Key: "date-location-meal" e.g. "2026-02-10-city-mittag"
+    map[`${c.date}-${c.location}-${c.meal_type}`] = c.count;
+  }
+  return map;
+}
+
 export default function WochenplanPageWrapper() {
   return <Suspense fallback={<div className="text-center py-8 text-primary-500">Lade...</div>}><WochenplanPage /></Suspense>;
 }
@@ -39,6 +57,7 @@ function WochenplanPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
+  const [paxMap, setPaxMap] = useState<Record<string, number>>({});
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -51,9 +70,14 @@ function WochenplanPage() {
     setLoading(true);
     setError(null);
 
-    api.get<WeekPlan>(`/api/plans?year=${year}&week=${week}`)
-      .then(planData => {
+    // Load plan and guest counts in parallel
+    Promise.all([
+      api.get<WeekPlan>(`/api/plans?year=${year}&week=${week}`),
+      api.get<GuestCount[]>(`/api/ocr?year=${year}&week=${week}`)
+    ])
+      .then(([planData, guestCounts]) => {
         setPlan(planData);
+        setPaxMap(buildPaxMap(guestCounts));
         setLoading(false);
       })
       .catch(err => {
@@ -64,6 +88,16 @@ function WochenplanPage() {
   }, [year, week]);
 
   const rotationWeek = ((week - 1) % 6) + 1;
+
+  // Calculate PAX summary for display
+  const paxSummary = Object.keys(paxMap).length > 0 ? {
+    hasPax: true,
+    cityMittag: Object.entries(paxMap).filter(([k]) => k.includes('-city-mittag')).reduce((sum, [, v]) => sum + v, 0),
+    cityAbend: Object.entries(paxMap).filter(([k]) => k.includes('-city-abend')).reduce((sum, [, v]) => sum + v, 0),
+    suedMittag: Object.entries(paxMap).filter(([k]) => k.includes('-sued-mittag')).reduce((sum, [, v]) => sum + v, 0),
+    suedAbend: Object.entries(paxMap).filter(([k]) => k.includes('-sued-abend')).reduce((sum, [, v]) => sum + v, 0),
+    daysWithData: new Set(Object.keys(paxMap).map(k => k.split('-').slice(0, 3).join('-'))).size,
+  } : { hasPax: false, cityMittag: 0, cityAbend: 0, suedMittag: 0, suedAbend: 0, daysWithData: 0 };
 
   // Navigate to current week
   const goToCurrentWeek = () => {
@@ -288,6 +322,40 @@ function WochenplanPage() {
           </div>
         </div>
       </div>
+
+      {/* PAX Summary (if Felix data available) */}
+      {paxSummary.hasPax && (
+        <div className="bg-gradient-to-r from-accent-50 to-amber-50 rounded-card border border-accent-200 p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-accent-700 font-semibold text-sm">Gästezahlen (Felix)</span>
+              <span className="text-xs text-accent-600 bg-accent-100 px-2 py-0.5 rounded-full">
+                {paxSummary.daysWithData} Tage
+              </span>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-3">
+                <span className="text-primary-500 font-medium">City:</span>
+                <span className="bg-white px-2 py-0.5 rounded border border-primary-200">
+                  <span className="text-primary-700">M</span> <strong className="text-primary-900">{paxSummary.cityMittag}</strong>
+                </span>
+                <span className="bg-white px-2 py-0.5 rounded border border-primary-200">
+                  <span className="text-primary-700">A</span> <strong className="text-primary-900">{paxSummary.cityAbend}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-primary-500 font-medium">SÜD:</span>
+                <span className="bg-white px-2 py-0.5 rounded border border-primary-200">
+                  <span className="text-primary-700">M</span> <strong className="text-primary-900">{paxSummary.suedMittag}</strong>
+                </span>
+                <span className="bg-white px-2 py-0.5 rounded border border-primary-200">
+                  <span className="text-primary-700">A</span> <strong className="text-primary-900">{paxSummary.suedAbend}</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Week Grid */}
       {loading ? (

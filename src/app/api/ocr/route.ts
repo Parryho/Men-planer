@@ -28,17 +28,40 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Calculate ISO week date range
+function getWeekDateRange(year: number, week: number): { from: string; to: string } {
+  // ISO week: week 1 contains the first Thursday of the year
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7; // Mon=1..Sun=7
+  const monday = new Date(jan4);
+  monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+  return { from: formatDate(monday), to: formatDate(sunday) };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const db = getDb();
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
-
     const from = searchParams.get('from');
     const to = searchParams.get('to');
+    const year = searchParams.get('year');
+    const week = searchParams.get('week');
 
     let counts;
-    if (from && to) {
+
+    // Support year/week parameters for calendar week lookup
+    if (year && week) {
+      const range = getWeekDateRange(parseInt(year), parseInt(week));
+      counts = db.prepare(
+        'SELECT * FROM guest_counts WHERE date >= ? AND date <= ? ORDER BY date, location, meal_type'
+      ).all(range.from, range.to);
+    } else if (from && to) {
       counts = db.prepare('SELECT * FROM guest_counts WHERE date >= ? AND date <= ? ORDER BY date, location, meal_type').all(from, to);
     } else if (date) {
       counts = db.prepare('SELECT * FROM guest_counts WHERE date = ? ORDER BY location, meal_type').all(date);
