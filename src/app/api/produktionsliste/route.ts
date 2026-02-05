@@ -33,6 +33,18 @@ interface RecipeItemRow {
 const SLOT_NAMES = ['soup', 'main1', 'side1a', 'side1b', 'main2', 'side2a', 'side2b', 'dessert'] as const;
 const DEFAULT_PAX: Record<string, number> = { city: 60, sued: 45 };
 
+// Calculate ISO week date range (Monday to Sunday)
+function getWeekDateRange(year: number, week: number): { from: string; to: string } {
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7;
+  const monday = new Date(jan4);
+  monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+  return { from: formatDate(monday), to: formatDate(sunday) };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const db = getDb();
@@ -50,11 +62,12 @@ export async function GET(request: NextRequest) {
   }
   const plans = db.prepare(planSql).all(...planParams) as PlanRow[];
 
-  // Get guest counts for this week
+  // Get guest counts for this week (filter by calendar week date range)
+  const range = getWeekDateRange(year, week);
   const guestCounts = db.prepare(`
     SELECT date, location, meal_type, count FROM guest_counts
-    WHERE date LIKE ?
-  `).all(`${year}-%`) as Array<{ date: string; location: string; meal_type: string; count: number }>;
+    WHERE date >= ? AND date <= ?
+  `).all(range.from, range.to) as Array<{ date: string; location: string; meal_type: string; count: number }>;
 
   // Build guest count lookup by day_of_week + location + meal
   const guestLookup: Record<string, number> = {};
